@@ -1,0 +1,71 @@
+{
+    "name": "durex-kz/bot-guard",
+    "description": "Фильтр сканеров уязвимостей для Laravel: распознавание перебора .env/wp-login/phpinfo, инъекций и известных сканеров, автоматическая блокировка подсети",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "security",
+        "scanner",
+        "bot",
+        "firewall",
+        "ip-ban"
+    ],
+    "authors": [
+        {
+            "name": "Aslan Tumenov",
+            "homepage": "https://github.com/durex-kz"
+        }
+    ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/durex-kz/error-monitor"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/cache": "^12.0|^13.0",
+        "illuminate/database": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "durex-kz/error-monitor": "^0.1|^1.0",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+    },
+    "suggest": {
+        "durex-kz/error-monitor": "Запросы сканеров пишутся в журнал ошибок (is_scanner, сразу исправленными)",
+        "durex-kz/filament-security": "Справочник заблокированных IP и виджет в панели Filament"
+    },
+    "autoload": {
+        "psr-4": {
+            "DurexKz\\BotGuard\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DurexKz\\BotGuard\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "DurexKz\\BotGuard\\BotGuardServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "pest"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

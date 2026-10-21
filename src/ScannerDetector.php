@@ -28,7 +28,9 @@ class ScannerDetector
 		. '|administrator|shell|cmd|console|debug/default|(sftp-)?config\.json|enhancecp|etc/passwd'
 		// Laravel Debugbar, API чужих сервисов: Metabase (api/session/properties), Airflow (api/v1/dags),
 		// Grafana (api/org), OpenAI-совместимые LLM-шлюзы (v1/models)
-		. '|_debugbar|api/session/properties|api/v1/dags|api/org|v1/models)(/|$)',
+		. '|_debugbar|api/session/properties|api/v1/dags|api/org|v1/models'
+		// файлы зависимостей с версиями пакетов — по ним подбирают известные уязвимости
+		. '|composer\.(json|lock)|vendor/composer/installed\.json|package(-lock)?\.json|yarn\.lock)(/|$)',
 	];
 
 	/**

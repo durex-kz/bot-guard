@@ -31,9 +31,14 @@ it('recognizes scanner probes from both projects', function () {
 		->and(probe('/', 'sqlmap/1.7'))->toBeTrue()
 		->and(probe('/', 'Mozilla/5.0', 'PROPFIND'))->toBeTrue()
 		->and(probe('/', 'Mozilla/5.0', 'GET', '203.0.113.10'))->toBeTrue()
+		->and(probe('/composer.lock'))->toBeTrue()
+		->and(probe('/composer.json'))->toBeTrue()
+		->and(probe('/vendor/composer/installed.json'))->toBeTrue()
+		->and(probe('/package-lock.json'))->toBeTrue()
 		// обычные адреса
 		->and(probe('/'))->toBeFalse()
 		->and(probe('/posts/15'))->toBeFalse()
+		->and(probe('/docs/composer-guide'))->toBeFalse()
 		->and(probe('/.well-known/assetlinks.json'))->toBeFalse()
 		->and(probe('/document/5', 'QR Scanner/2.1'))->toBeFalse()
 		->and(probe('/news/games.html', 'Mozilla/5.0 (compatible; Googlebot/2.1)'))->toBeFalse();

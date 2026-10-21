@@ -37,6 +37,8 @@ php artisan vendor:publish --tag=bot-guard-config
 |---|---|---|
 | `probes_to_ban` / `probes_window_minutes` | `3` / `10` | порог автоблокировки |
 | `auto_ban_hours` | `24` | срок автоблокировки |
+| `not_found_burst` / `not_found_burst_seconds` | `5` / `10` | перебор адресов: столько разных 404 с одного IP за столько секунд — сканер (`0` — выключено) |
+| `not_found_burst_except_user_agents` | поисковые роботы | User-Agent, которые правило перебора не трогает |
 | `ipv4_prefix` / `ipv6_prefix` | `24` / `64` | размер блокируемой подсети |
 | `except` | `['up']` | адреса, которые фильтр не трогает |
 | `trust_existing_routes` | `['api/*']` | существующие маршруты без проверки правил |

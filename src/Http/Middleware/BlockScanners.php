@@ -26,7 +26,10 @@ use Throwable;
  *   только счётчик hits у записи справочника;
  * - запрос по правилам ScannerDetector → 404 и запись в журнал ошибок (если установлен error-monitor:
  *   is_scanner, сразу решённая); после probes_to_ban таких запросов из одной подсети за
- *   probes_window_minutes минут IP заносится в справочник на auto_ban_hours часов, а с ним и его подсеть
+ *   probes_window_minutes минут IP заносится в справочник на auto_ban_hours часов, а с ним и его подсеть;
+ * - перебор адресов: not_found_burst разных несуществующих страниц с одного IP за not_found_burst_seconds
+ *   секунд — тоже сканер, даже если адреса обычные (/purchases, /lots, /trades): его 404 в журнале
+ *   помечаются сканерными, а запросы серии учитываются в автоблокировке
  *
  * Ответ 404, а не 403: сканеру не сообщаем, что его распознали
  */
@@ -52,29 +55,147 @@ class BlockScanners
 		}
 
 		if ($this->isTrustedRoute($request) || !$this->detector->isProbe($request)) {
-			return $next($request);
+			$response = $next($request);
+
+			$this->trackNotFound($request, $response);
+
+			return $response;
 		}
 
 		$this->logProbe($request);
 
-		// локальные и частные адреса (разработка, тесты, artisan, подделанный X-Forwarded-For) не блокируем
-		if (BotGuard::isPublicIp($ip) && ($network = $model::networkOf($ip))) {
-			$probes = $this->countProbe($network);
-
-			if ($probes >= (int) config('bot-guard.probes_to_ban', 3)) {
-				$model::autoBan($ip, sprintf(
-					'Фильтр сканеров: %d запросов сканера из подсети %s за %d мин. Последний: %s %s%s',
-					$probes,
-					$network,
-					config('bot-guard.probes_window_minutes', 10),
-					$request->method(),
-					mb_substr($request->getRequestUri(), 0, 500),
-					filled($request->userAgent()) ? ' (User-Agent: ' . mb_substr($request->userAgent(), 0, 200) . ')' : ' (без User-Agent)',
-				), $request);
-			}
-		}
+		$this->countTowardsBan($request);
 
 		return $this->reject();
+	}
+
+	/**
+	 * Запрос сканера — в счётчик автоблокировки подсети; после probes_to_ban запросов за
+	 * probes_window_minutes минут IP и его подсеть блокируются
+	 */
+	protected function countTowardsBan(Request $request, string $kind = 'запросов сканера'): void
+	{
+		$ip = $request->ip();
+		$model = BotGuard::model();
+
+		// локальные и частные адреса (разработка, тесты, artisan, подделанный X-Forwarded-For) не блокируем
+		if (!BotGuard::isPublicIp($ip) || !($network = $model::networkOf($ip))) {
+			return;
+		}
+
+		$probes = $this->countProbe($network);
+
+		if ($probes >= (int) config('bot-guard.probes_to_ban', 3)) {
+			$model::autoBan($ip, sprintf(
+				'Фильтр сканеров: %d %s из подсети %s за %d мин. Последний: %s %s%s',
+				$probes,
+				$kind,
+				$network,
+				config('bot-guard.probes_window_minutes', 10),
+				$request->method(),
+				mb_substr($request->getRequestUri(), 0, 500),
+				filled($request->userAgent()) ? ' (User-Agent: ' . mb_substr($request->userAgent(), 0, 200) . ')' : ' (без User-Agent)',
+			), $request);
+		}
+	}
+
+	/**
+	 * Перебор адресов: not_found_burst разных несуществующих страниц (ответ 404) с одного IP за
+	 * not_found_burst_seconds секунд. Сами адреса могут быть обычными словами (/purchases, /lots,
+	 * /trades) — правилами по адресу такой перебор не поймать, поэтому смотрим на поведение.
+	 * Учитываются только переходы гостей на страницы: статические файлы и подзапросы браузера
+	 * (картинки, шрифты, скрипты — Sec-Fetch-Dest не document) не считаются, иначе гость, у которого
+	 * на странице несколько битых картинок, попал бы под блокировку
+	 */
+	protected function trackNotFound(Request $request, Response $response): void
+	{
+		$limit = (int) config('bot-guard.not_found_burst', 5);
+		$ip = $request->ip();
+
+		if ($limit < 1
+			|| $response->getStatusCode() !== 404
+			|| !BotGuard::isPublicIp($ip)
+			|| !in_array($request->getMethod(), ['GET', 'HEAD'], true)
+			|| $this->isStaticOrSubresource($request)
+			|| $this->isSearchEngine($request)
+			|| $this->isSignedIn()) {
+			return;
+		}
+
+		$paths = $this->rememberNotFound($ip, '/' . ltrim($request->path(), '/'));
+
+		if ($paths < $limit) {
+			return;
+		}
+
+		// прежние 404 серии в журнале ошибок — сканерные (следующие журнал пометит сам: с этого IP недавно был сканер)
+		$this->markScannerSeries($ip);
+
+		$this->countTowardsBan($request, 'запросов перебора адресов');
+	}
+
+	/**
+	 * Запомнить несуществующий адрес IP в окне not_found_burst_seconds (отсчёт от первого) и вернуть,
+	 * сколько разных адресов в окне
+	 */
+	protected function rememberNotFound(string $ip, string $path): int
+	{
+		$key = 'bot-guard:not-found:' . $ip;
+		$now = now()->getTimestamp();
+
+		try {
+			$burst = Cache::get($key);
+
+			if (!is_array($burst) || ($burst['until'] ?? 0) < $now) {
+				$burst = ['until' => $now + max(1, (int) config('bot-guard.not_found_burst_seconds', 10)), 'paths' => []];
+			}
+
+			$burst['paths'][sha1($path)] = true;
+
+			Cache::put($key, $burst, max(1, $burst['until'] - $now));
+
+			return count($burst['paths']);
+		} catch (Throwable) {
+			return 0;
+		}
+	}
+
+	protected function isStaticOrSubresource(Request $request): bool
+	{
+		$dest = $request->headers->get('Sec-Fetch-Dest');
+
+		return (filled($dest) && !in_array($dest, ['document', 'iframe'], true))
+			|| preg_match('~\.(css|js|mjs|map|json|png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|otf|eot|mp4|webm|mp3)$~i', $request->path());
+	}
+
+	protected function isSearchEngine(Request $request): bool
+	{
+		$pattern = (string) config('bot-guard.not_found_burst_except_user_agents', '');
+
+		return $pattern !== '' && preg_match('~' . $pattern . '~i', (string) $request->userAgent()) === 1;
+	}
+
+	// вошедший пользователь проверяется без лишнего обращения к сессии: только если он уже определён
+	protected function isSignedIn(): bool
+	{
+		try {
+			return app()->bound('auth') && app('auth')->guard()->hasUser();
+		} catch (Throwable) {
+			return false;
+		}
+	}
+
+	protected function markScannerSeries(string $ip): void
+	{
+		if (!config('bot-guard.log_to_error_monitor', true) || !class_exists(ErrorMonitor::class)) {
+			return;
+		}
+
+		try {
+			ErrorMonitor::model()::markScannerIp($ip, now());
+		} catch (Throwable) {
+			// журнал ошибок не должен ломать ответ
+		}
 	}
 
 	/**

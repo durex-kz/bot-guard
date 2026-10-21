@@ -171,3 +171,53 @@ it('lets error-monitor recognize scanners in error logs', function () {
 
 	expect(ErrorLog::sole())->is_scanner->toBeTrue();
 });
+
+it('treats a burst of different 404 pages from one IP as a scanner and bans it', function () {
+	config()->set('bot-guard.not_found_burst', 3);
+
+	foreach (['/purchases', '/public', '/announcements', '/lots', '/trades'] as $path) {
+		$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get($path)->assertNotFound();
+	}
+
+	// с 3-го адреса — перебор; 3-й, 4-й и 5-й запросы доводят счётчик до probes_to_ban
+	expect(BannedIp::where('ip', '203.0.113.9')->value('reason'))->toContain('перебора адресов')
+		->and(ErrorLog::where('ip', '203.0.113.9')->count())->toBe(5)
+		->and(ErrorLog::where('ip', '203.0.113.9')->where('is_scanner', false)->exists())->toBeFalse();
+
+	// заблокирована вся подсеть
+	$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])->get('/login')->assertNotFound();
+});
+
+it('does not count repeated, static, subresource, private or signed-in 404s as a burst', function () {
+	config()->set('bot-guard.not_found_burst', 3);
+
+	$get = fn(string $ip, string $path, array $headers = []) => $this->withServerVariables(['REMOTE_ADDR' => $ip])
+		->withHeaders($headers)->get($path)->assertNotFound();
+
+	foreach (range(1, 5) as $i) {
+		$get('203.0.113.21', '/old-link'); // один и тот же адрес
+		$get('203.0.113.22', "/img/photo-{$i}.png"); // битые картинки на странице
+		$get('203.0.113.23', "/page-{$i}", ['Sec-Fetch-Dest' => 'image']); // подзапрос браузера
+		$get('10.0.0.5', "/page-{$i}"); // частный адрес
+		$get('203.0.113.25', "/old-page-{$i}", ['User-Agent' => 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)']); // поисковый робот
+	}
+
+	$this->actingAs(new \Illuminate\Auth\GenericUser(['id' => 1]));
+
+	foreach (range(1, 5) as $i) {
+		$get('203.0.113.24', "/page-{$i}"); // вошедший пользователь
+	}
+
+	expect(BannedIp::count())->toBe(0)
+		->and(ErrorLog::where('is_scanner', true)->exists())->toBeFalse();
+});
+
+it('can switch the 404 burst rule off', function () {
+	config()->set('bot-guard.not_found_burst', 0);
+
+	foreach (range(1, 8) as $i) {
+		$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.30'])->get("/page-{$i}")->assertNotFound();
+	}
+
+	expect(BannedIp::count())->toBe(0);
+});

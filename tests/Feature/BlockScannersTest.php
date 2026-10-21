@@ -44,6 +44,37 @@ it('recognizes scanner probes from both projects', function () {
 		->and(probe('/news/games.html', 'Mozilla/5.0 (compatible; Googlebot/2.1)'))->toBeFalse();
 });
 
+it('recognizes SQL injection probes without flagging ordinary search queries', function () {
+	// перебор из журнала QazPress: ?magazineissue=… на /service/8
+	foreach ([
+		"/service/8?magazineissue=9' ORDER BY 1-- -",
+		'/service/8?magazineissue=9 ORDER BY 1-- -',
+		"/service/8?magazineissue=) AND (1664132497=1664132497'",
+		"/service/8?magazineissue=9 AND 5978=CONVERT(INT,(SELECT 'fpcwoe'+((SELECT (CASE WHEN (5978=5978) THEN '1' ELSE '0' END)))+'iuklgq'))-- -",
+		"/service/8?magazineissue=9' AND 8314=CONVERT(INT,(SELECT 1))-- -",
+		'/service/8?magazineissue=' . rawurlencode("9' ORDER BY 1-- -"),
+		"/?id=1' AND 1=1-- -",
+		"/?id=1') OR ('7'='7",
+		'/?id=1 AND CAST(@@version AS INT)',
+		'/?q=1 UNION ALL SELECT table_name FROM information_schema.tables',
+		"/?id=1';WAITFOR DELAY '0:0:5'--",
+	] as $uri) {
+		expect(probe($uri))->toBeTrue($uri);
+	}
+
+	foreach ([
+		'/magazines?q=order by date',
+		'/search?q=select from where',
+		'/search?q=rock and roll',
+		"/search?q=O'Brien and 2 others",
+		'/search?q=1 = 1',
+		'/posts?sort=-created_at',
+		'/service/8?magazineissue=9',
+	] as $uri) {
+		expect(probe($uri))->toBeFalse($uri);
+	}
+});
+
 it('supports extra rules from config', function () {
 	expect(probe('/old-admin'))->toBeFalse();
 

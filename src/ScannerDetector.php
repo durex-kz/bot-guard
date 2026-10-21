@@ -40,6 +40,16 @@ class ScannerDetector
 		'\.\./|\.\.\\\\|/etc/passwd|win\.ini|union[\s/*]+(all[\s/*]+)?select|<script|javascript:',
 		'\$\{jndi:|\$\{\$\{|allow_url_include|auto_prepend_file|xdebug_session_start|base64_decode\(',
 		'\beval\(|sleep\(\d+\)|benchmark\(|waitfor\s+delay|/bin/(ba)?sh|cmd\.exe|\bwget\s|\bcurl\s',
+		// SQL-инъекции по синтаксическим признакам (обычный поиск со словами «order by», «select» не задевают):
+		// подбор числа столбцов (ORDER BY 1-- -), ошибки приведения типов SQL Server (CONVERT(INT,…), CAST(… AS INT)),
+		// тавтология после кавычки или скобки (' AND 1=1, ) AND (123=123'), комментарий сразу после кавычки ('-- -)
+		'\border\s+by\s+\d+\s*(--|#|/\*)',
+		'\b(convert|cast)\s*\(\s*(int|bigint|varchar|nvarchar|char)\b|\bcast\s*\(.{0,80}\bas\s+(int|bigint|varchar|nvarchar|char)\b',
+		// именованная группа: правила склеиваются в одно выражение, номера групп у них общие
+		'[\'")]\s*(?:and|or)\s*\(?\s*[\'"]?(?<sqli_n>\d+)[\'"]?\s*=\s*[\'"]?\k<sqli_n>\b',
+		'[\'")]\s*(--[\s-]|--$|#|/\*)',
+		// служебные объекты СУБД
+		'information_schema|@@version|xp_cmdshell|pg_sleep|dbms_pipe|extractvalue\s*\(|updatexml\s*\(',
 		// REST API WordPress (/blog/?rest_route=/, /wp/?rest_route=/…): ищут сайт на WordPress под любым каталогом
 		'[?&]rest_route=',
 		// метка проверочных запросов робота продавца спам-ссылок (?_dispatch_probe=…)

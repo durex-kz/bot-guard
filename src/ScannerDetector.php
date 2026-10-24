@@ -94,7 +94,21 @@ class ScannerDetector
 			|| !in_array($request->getMethod(), config('bot-guard.allowed_methods', ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']), true)
 			// браузеры и поисковые боты всегда шлют User-Agent; без него 404/405 — перебор адресов
 			|| ($userAgent === '' && in_array($code, [404, 405], true))
+			|| $this->isForgedLivewireUpdate($request, $path)
 			|| $this->matchesCustomRules($request, $code);
+	}
+
+	/**
+	 * Запрос к Livewire (/livewire/update, /livewire-<хэш>/update) не от Livewire: его JS-клиент всегда
+	 * шлёт заголовок X-Livewire и JSON. Без них — скрипт, повторяющий снятый со страницы запрос
+	 * (сам Livewire отвечает на такой запрос 404 в RequireLivewireHeaders, «чтобы не подтверждать
+	 * сканеру адрес»). Вошедшие пользователи таких запросов не делают
+	 */
+	protected function isForgedLivewireUpdate(Request $request, string $path): bool
+	{
+		return $request->isMethod('POST')
+			&& preg_match('~^/livewire(-[^/]+)?/update$~', $path) === 1
+			&& (!$request->hasHeader('X-Livewire') || !$request->isJson());
 	}
 
 	protected function matches(array $rules, string $subject): bool

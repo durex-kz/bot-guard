@@ -221,3 +221,20 @@ it('can switch the 404 burst rule off', function () {
 
 	expect(BannedIp::count())->toBe(0);
 });
+
+it('recognizes Livewire update requests that do not come from Livewire', function () {
+	$livewire = fn(string $uri, array $headers = []) => app(ScannerDetector::class)->isProbe(
+		Request::create($uri, 'POST', server: ['HTTP_USER_AGENT' => 'Mozilla/5.0', ...$headers], content: '{"components":[]}')
+	);
+
+	expect($livewire('/livewire-37496913/update'))->toBeTrue()                                   // без X-Livewire
+		->and($livewire('/livewire/update', ['CONTENT_TYPE' => 'application/json']))->toBeTrue()   // без X-Livewire
+		->and($livewire('/livewire-37496913/update', ['HTTP_X_LIVEWIRE' => '1']))->toBeTrue()      // не JSON
+		// настоящий запрос Livewire
+		->and($livewire('/livewire-37496913/update', ['HTTP_X_LIVEWIRE' => '1', 'CONTENT_TYPE' => 'application/json']))->toBeFalse()
+		->and($livewire('/livewire/update', ['HTTP_X_LIVEWIRE' => '1', 'CONTENT_TYPE' => 'application/json']))->toBeFalse()
+		// другие адреса Livewire и похожие страницы
+		->and(probe('/livewire-37496913/livewire.js'))->toBeFalse()
+		->and(probe('/livewire-37496913/update'))->toBeFalse() // GET — не запрос компонента
+		->and($livewire('/news/livewire/update-2026'))->toBeFalse();
+});

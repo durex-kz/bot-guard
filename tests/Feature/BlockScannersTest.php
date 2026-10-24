@@ -144,6 +144,18 @@ it('multiplies the ban for every repeated attack from the same subnet', function
 	expect(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(3)
 		->and($hoursOf('203.0.113.5'))->toBe(24 * 2 * 2);
 
+	// подсеть вернулась позже окна повтора (24 ч после окончания блокировки) — счёт начинается заново
+	$this->travel(24 * 2 * 2 + 25)->hours();
+	$attack('203.0.113.9');
+	expect(BannedIp::where('ip', '203.0.113.9')->value('ban_count'))->toBe(1)
+		->and($hoursOf('203.0.113.9'))->toBe(24);
+
+	// а в пределах окна — снова повтор: № 2, × 2
+	$this->travel(24 + 23)->hours();
+	$attack('203.0.113.10');
+	expect(BannedIp::where('ip', '203.0.113.10')->value('ban_count'))->toBe(2)
+		->and($hoursOf('203.0.113.10'))->toBe(48);
+
 	// другая подсеть начинает с обычного срока
 	$attack('198.51.100.9');
 	expect($hoursOf('198.51.100.9'))->toBe(24);
@@ -153,6 +165,16 @@ it('multiplies the ban for every repeated attack from the same subnet', function
 	$attack('203.0.113.5');
 	expect(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(1)
 		->and($hoursOf('203.0.113.5'))->toBe(24);
+});
+
+it('counts a late return as a repeat when the window is turned off', function () {
+	config()->set('bot-guard.auto_ban_repeat_window_hours', null);
+	BannedIp::create(['ip' => '203.0.113.5', 'reason' => 'old', 'is_auto' => true, 'ban_count' => 3, 'banned_until' => now()->subYear()]);
+
+	expect(BannedIp::autoBanCount('203.0.113.0/24'))->toBe(3);
+
+	config()->set('bot-guard.auto_ban_repeat_window_hours', 24);
+	expect(BannedIp::autoBanCount('203.0.113.0/24'))->toBe(0);
 });
 
 it('caps the repeated ban and allows turning growth off', function () {

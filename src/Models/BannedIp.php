@@ -114,11 +114,29 @@ class BannedIp extends Model
 	}
 
 	/**
-	 * Сколько раз подсеть уже блокировалась автоматически (по всем её IP, включая истёкшие блокировки)
+	 * Номер последней автоблокировки подсети (по всем её IP), если новая атака — её повтор: пришла не позже
+	 * auto_ban_repeat_window_hours часов после окончания этой блокировки. Иначе 0 — счёт начинается заново
 	 */
 	public static function autoBanCount(string $network): int
 	{
-		return (int) static::query()->where('network', $network)->where('is_auto', true)->max('ban_count');
+		$last = static::query()
+			->where('network', $network)
+			->where('is_auto', true)
+			->whereNotNull('banned_until')
+			->orderByDesc('banned_until')
+			->first(['ban_count', 'banned_until']);
+
+		if ($last === null) {
+			return 0;
+		}
+
+		$window = config('bot-guard.auto_ban_repeat_window_hours', 24);
+
+		if ($window !== null && $last->banned_until->copy()->addHours((int) $window)->isPast()) {
+			return 0;
+		}
+
+		return (int) $last->ban_count;
 	}
 
 	/**
@@ -196,7 +214,8 @@ class BannedIp extends Model
 	/**
 	 * Заблокировать IP (а с ним и подсеть) автоматически — фильтр сканеров. Действующую или ручную
 	 * блокировку не трогаем, истёкшую автоматическую продлеваем с новой причиной. Повторная атака
-	 * подсети (после истёкшей блокировки любого её IP) — срок в auto_ban_multiplier раз длиннее прежнего
+	 * подсети (в течение auto_ban_repeat_window_hours после окончания блокировки любого её IP) —
+	 * срок в auto_ban_multiplier раз длиннее прежнего
 	 */
 	public static function autoBan(string $ip, string $reason, ?Request $request = null): void
 	{

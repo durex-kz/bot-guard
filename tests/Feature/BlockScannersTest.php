@@ -130,19 +130,19 @@ it('multiplies the ban for every repeated attack from the same subnet', function
 		->and(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(1)
 		->and(BannedIp::where('ip', '203.0.113.5')->value('network'))->toBe('203.0.113.0/24');
 
-	// блокировка истекла — подсеть атакует снова, уже с другого IP: срок × 30
+	// блокировка истекла — подсеть атакует снова, уже с другого IP: срок × 2
 	$this->travel(25)->hours();
 	$attack('203.0.113.77');
 	$second = BannedIp::where('ip', '203.0.113.77')->firstOrFail();
 	expect($second->ban_count)->toBe(2)
-		->and($hoursOf('203.0.113.77'))->toBe(24 * 30)
-		->and($second->reason)->toContain('Повторная атака подсети: блокировка №2 на 30 дн.');
+		->and($hoursOf('203.0.113.77'))->toBe(24 * 2)
+		->and($second->reason)->toContain('Повторная атака подсети: блокировка №2 на 2 дн.');
 
-	// третий раз — тот же первый IP: × 30 ещё раз
-	$this->travel(24 * 30 + 1)->hours();
+	// третий раз — тот же первый IP: × 2 ещё раз
+	$this->travel(24 * 2 + 1)->hours();
 	$attack('203.0.113.5');
 	expect(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(3)
-		->and($hoursOf('203.0.113.5'))->toBe(24 * 30 * 30);
+		->and($hoursOf('203.0.113.5'))->toBe(24 * 2 * 2);
 
 	// другая подсеть начинает с обычного срока
 	$attack('198.51.100.9');
@@ -158,8 +158,10 @@ it('multiplies the ban for every repeated attack from the same subnet', function
 it('caps the repeated ban and allows turning growth off', function () {
 	config()->set('bot-guard.auto_ban_max_hours', 1000);
 	expect(BannedIp::autoBanHoursFor(1))->toBe(24)
-		->and(BannedIp::autoBanHoursFor(2))->toBe(720)
-		->and(BannedIp::autoBanHoursFor(3))->toBe(1000)
+		->and(BannedIp::autoBanHoursFor(2))->toBe(48)
+		->and(BannedIp::autoBanHoursFor(3))->toBe(96)
+		->and(BannedIp::autoBanHoursFor(6))->toBe(768)
+		->and(BannedIp::autoBanHoursFor(7))->toBe(1000)
 		->and(BannedIp::autoBanHoursFor(50))->toBe(1000);
 
 	config()->set('bot-guard.auto_ban_multiplier', 1);

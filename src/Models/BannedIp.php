@@ -107,7 +107,7 @@ class BannedIp extends Model
 	 */
 	public static function autoBanHoursFor(int $count): int
 	{
-		$hours = static::autoBanHours() * max(1, (float) config('bot-guard.auto_ban_multiplier', 30)) ** max(0, $count - 1);
+		$hours = static::autoBanHours() * max(1, (float) config('bot-guard.auto_ban_multiplier', 2)) ** max(0, $count - 1);
 		$max = config('bot-guard.auto_ban_max_hours', 87600);
 
 		return (int) min($hours, $max === null ? PHP_INT_MAX : (int) $max);
@@ -250,7 +250,7 @@ class BannedIp extends Model
 		return $ban;
 	}
 
-	// 720 → «30 дн.», 21600 → «900 дн.», 24 → «24 ч»
+	// 48 → «2 дн.», 720 → «30 дн.», 24 → «24 ч»
 	protected static function formatHours(int $hours): string
 	{
 		return $hours % 24 === 0 && $hours >= 48 ? intdiv($hours, 24) . ' дн.' : $hours . ' ч';

@@ -24,6 +24,8 @@ use Throwable;
  * @property ?Carbon $banned_until
  * @property int $hits
  * @property ?Carbon $last_hit_at
+ * @property ?string $network
+ * @property int $ban_count
  */
 class BannedIp extends Model
 {
@@ -37,6 +39,8 @@ class BannedIp extends Model
 		'hits',
 		'last_hit_at',
 		'created_by',
+		'network',
+		'ban_count',
 	];
 
 	public function getTable(): string
@@ -51,6 +55,7 @@ class BannedIp extends Model
 			'banned_until' => 'datetime',
 			'last_hit_at' => 'datetime',
 			'hits' => 'integer',
+			'ban_count' => 'integer',
 		];
 	}
 
@@ -59,6 +64,11 @@ class BannedIp extends Model
 		// список в кэше пересобирается при любом изменении справочника
 		static::saved(fn() => static::flushCache());
 		static::deleted(fn() => static::flushCache());
+
+		// подсеть записи — для подсчёта повторных атак (повтор может прийти с другого IP той же подсети)
+		static::saving(function (self $ban) {
+			$ban->network = static::networkOf((string) $ban->ip);
+		});
 
 		// созданную вручную запись помечаем автором
 		static::creating(function (self $ban) {
@@ -89,6 +99,26 @@ class BannedIp extends Model
 	public static function autoBanHours(): int
 	{
 		return (int) config('bot-guard.auto_ban_hours', 24);
+	}
+
+	/**
+	 * Срок $count-й автоблокировки подсети: auto_ban_hours × auto_ban_multiplier^($count − 1),
+	 * не больше auto_ban_max_hours
+	 */
+	public static function autoBanHoursFor(int $count): int
+	{
+		$hours = static::autoBanHours() * max(1, (float) config('bot-guard.auto_ban_multiplier', 30)) ** max(0, $count - 1);
+		$max = config('bot-guard.auto_ban_max_hours', 87600);
+
+		return (int) min($hours, $max === null ? PHP_INT_MAX : (int) $max);
+	}
+
+	/**
+	 * Сколько раз подсеть уже блокировалась автоматически (по всем её IP, включая истёкшие блокировки)
+	 */
+	public static function autoBanCount(string $network): int
+	{
+		return (int) static::query()->where('network', $network)->where('is_auto', true)->max('ban_count');
 	}
 
 	/**
@@ -165,11 +195,14 @@ class BannedIp extends Model
 
 	/**
 	 * Заблокировать IP (а с ним и подсеть) автоматически — фильтр сканеров. Действующую или ручную
-	 * блокировку не трогаем, истёкшую автоматическую продлеваем с новой причиной
+	 * блокировку не трогаем, истёкшую автоматическую продлеваем с новой причиной. Повторная атака
+	 * подсети (после истёкшей блокировки любого её IP) — срок в auto_ban_multiplier раз длиннее прежнего
 	 */
 	public static function autoBan(string $ip, string $reason, ?Request $request = null): void
 	{
-		if (static::networkOf($ip) === null) {
+		$network = static::networkOf($ip);
+
+		if ($network === null) {
 			return;
 		}
 
@@ -180,10 +213,18 @@ class BannedIp extends Model
 				return;
 			}
 
+			$count = static::autoBanCount($network) + 1;
+			$hours = static::autoBanHoursFor($count);
+
+			if ($count > 1) {
+				$reason .= sprintf(' Повторная атака подсети: блокировка №%d на %s.', $count, static::formatHours($hours));
+			}
+
 			$ban->fill([
 				'reason' => $reason,
 				'is_auto' => true,
-				'banned_until' => now()->addHours(static::autoBanHours()),
+				'ban_count' => $count,
+				'banned_until' => now()->addHours($hours),
 				'url' => $request ? mb_substr($request->method() . ' ' . $request->fullUrl(), 0, 2000) : null,
 				'user_agent' => $request ? (mb_substr((string) $request->userAgent(), 0, 500) ?: null) : null,
 				'created_by' => null,
@@ -207,6 +248,12 @@ class BannedIp extends Model
 		])->save();
 
 		return $ban;
+	}
+
+	// 720 → «30 дн.», 21600 → «900 дн.», 24 → «24 ч»
+	protected static function formatHours(int $hours): string
+	{
+		return $hours % 24 === 0 && $hours >= 48 ? intdiv($hours, 24) . ' дн.' : $hours . ' ч';
 	}
 
 	public static function cacheKey(): string

@@ -117,6 +117,55 @@ it('bans the IP after repeated probes and blocks its whole /24', function () {
 	$this->withServerVariables(['REMOTE_ADDR' => '203.0.114.5'])->get('/login')->assertOk();
 });
 
+it('multiplies the ban for every repeated attack from the same subnet', function () {
+	$attack = function (string $ip) {
+		foreach (range(1, config('bot-guard.probes_to_ban')) as $i) {
+			$this->withServerVariables(['REMOTE_ADDR' => $ip])->get('/.env')->assertNotFound();
+		}
+	};
+	$hoursOf = fn(string $ip) => (int) round(now()->diffInHours(BannedIp::where('ip', $ip)->firstOrFail()->banned_until));
+
+	$attack('203.0.113.5');
+	expect($hoursOf('203.0.113.5'))->toBe(24)
+		->and(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(1)
+		->and(BannedIp::where('ip', '203.0.113.5')->value('network'))->toBe('203.0.113.0/24');
+
+	// блокировка истекла — подсеть атакует снова, уже с другого IP: срок × 30
+	$this->travel(25)->hours();
+	$attack('203.0.113.77');
+	$second = BannedIp::where('ip', '203.0.113.77')->firstOrFail();
+	expect($second->ban_count)->toBe(2)
+		->and($hoursOf('203.0.113.77'))->toBe(24 * 30)
+		->and($second->reason)->toContain('Повторная атака подсети: блокировка №2 на 30 дн.');
+
+	// третий раз — тот же первый IP: × 30 ещё раз
+	$this->travel(24 * 30 + 1)->hours();
+	$attack('203.0.113.5');
+	expect(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(3)
+		->and($hoursOf('203.0.113.5'))->toBe(24 * 30 * 30);
+
+	// другая подсеть начинает с обычного срока
+	$attack('198.51.100.9');
+	expect($hoursOf('198.51.100.9'))->toBe(24);
+
+	// снятие блокировки подсети сбрасывает счёт повторов
+	$this->artisan('bot-guard:unban', ['ip' => '203.0.113.1'])->assertSuccessful();
+	$attack('203.0.113.5');
+	expect(BannedIp::where('ip', '203.0.113.5')->value('ban_count'))->toBe(1)
+		->and($hoursOf('203.0.113.5'))->toBe(24);
+});
+
+it('caps the repeated ban and allows turning growth off', function () {
+	config()->set('bot-guard.auto_ban_max_hours', 1000);
+	expect(BannedIp::autoBanHoursFor(1))->toBe(24)
+		->and(BannedIp::autoBanHoursFor(2))->toBe(720)
+		->and(BannedIp::autoBanHoursFor(3))->toBe(1000)
+		->and(BannedIp::autoBanHoursFor(50))->toBe(1000);
+
+	config()->set('bot-guard.auto_ban_multiplier', 1);
+	expect(BannedIp::autoBanHoursFor(5))->toBe(24);
+});
+
 it('never bans private addresses', function () {
 	foreach (range(1, config('bot-guard.probes_to_ban') + 1) as $i) {
 		$this->withServerVariables(['REMOTE_ADDR' => '192.168.1.10'])->get('/.env')->assertNotFound();

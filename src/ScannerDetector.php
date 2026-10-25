@@ -4,6 +4,8 @@ namespace DurexKz\BotGuard;
 
 use DurexKz\BotGuard\Contracts\ScannerRule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Throwable;
 
 /**
  * Распознавание запросов сканеров уязвимостей: перебор phpinfo, бэкапов, .env/.git, WordPress,
@@ -69,10 +71,25 @@ class ScannerDetector
 		// «scanner» — но не приложения-сканеры QR-кодов: по QR открывают документы и отчёты
 		'(?<!qr)(?<!qr[- ])scanner',
 		// скриптовые HTTP-клиенты: обычные пользователи ими не ходят (существующие API — trust_existing_routes)
-		'python-requests|python-urllib',
+		'python-requests|python-urllib|fasthttp',
 		// проверки конкретных уязвимостей называют себя по номеру CVE: cve-2026-63030/1.0, metabase-cve-2026-72898-detect
 		'\bcve-\d{4}-\d+',
 	];
+
+	/**
+	 * Тело запроса: нагрузки удалённого выполнения кода. Проверяется только у запросов без маршрута
+	 * (isBodyExploit) — текст собственных форм сайта (статья о Node.js с require('child_process')) не задеваем
+	 */
+	protected const BODY_RULES = [
+		// React Server Components / Next.js («React2Shell»): подмена прототипа в теле Server Action
+		// (_formData.get = "$1:constructor:constructor", then = "$1:__proto__:then") и вызов child_process
+		'\$\d+:constructor:constructor|:__proto__:then|process\.mainModule|child_process',
+	];
+
+	/**
+	 * Сколько байт тела проверять: нагрузка эксплойта — в начале, большие загрузки читать целиком незачем
+	 */
+	protected const BODY_LIMIT = 65536;
 
 	public function isProbe(Request $request, ?int $code = null): bool
 	{
@@ -95,6 +112,7 @@ class ScannerDetector
 			// браузеры и поисковые боты всегда шлют User-Agent; без него 404/405 — перебор адресов
 			|| ($userAgent === '' && in_array($code, [404, 405], true))
 			|| $this->isForgedLivewireUpdate($request, $path)
+			|| $this->isBodyExploit($request)
 			|| $this->matchesCustomRules($request, $code);
 	}
 
@@ -109,6 +127,31 @@ class ScannerDetector
 		return $request->isMethod('POST')
 			&& preg_match('~^/livewire(-[^/]+)?/update$~', $path) === 1
 			&& (!$request->hasHeader('X-Livewire') || !$request->isJson());
+	}
+
+	/**
+	 * Нагрузка RCE в теле запроса (BODY_RULES, config bot-guard.rules.bodies) к адресу, у которого нет
+	 * маршрута для этого метода (POST / вместо GET /, чужие API). Существующие маршруты — формы сайта,
+	 * Livewire, API — не проверяются: в их полях пользователи законно пишут любой текст
+	 */
+	protected function isBodyExploit(Request $request): bool
+	{
+		if ($request->isMethod('GET') || $request->isMethod('HEAD')) {
+			return false;
+		}
+
+		$body = substr((string) $request->getContent(), 0, static::BODY_LIMIT);
+
+		if ($body === '' || !$this->matches([...static::BODY_RULES, ...$this->extra('bodies')], $body)) {
+			return false;
+		}
+
+		try {
+			return Route::getRoutes()->match($request) === null;
+		} catch (Throwable) {
+			// NotFoundHttpException / MethodNotAllowedHttpException — маршрута нет
+			return true;
+		}
 	}
 
 	protected function matches(array $rules, string $subject): bool

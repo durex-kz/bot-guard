@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.8 — 2026-10-25
+
+- Правило сканеров: нагрузка удалённого выполнения кода в теле не-GET запроса к адресу без маршрута —
+  проба React Server Components / Next.js («React2Shell»: `$1:constructor:constructor`, `:__proto__:then`),
+  `process.mainModule`, `child_process`. Существующие маршруты (формы сайта, Livewire, API) не проверяются:
+  в их полях пользователи законно пишут любой текст. Дополнительные правила — `rules.bodies`.
+- Правило сканеров: User-Agent `fasthttp` (скриптовый HTTP-клиент на Go), рядом с `python-requests`.
+
 ## v0.1.7 — 2026-10-24
 
 - Повтором считается атака подсети не позже `auto_ban_repeat_window_hours` часов (по умолчанию 24) после

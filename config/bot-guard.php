@@ -102,6 +102,8 @@ return [
 		'uris' => [],
 		// User-Agent: 'badbot|evilcrawler'
 		'user_agents' => [],
+		// тело не-GET запроса без маршрута (первые 64 КБ): 'eval\(base64_decode'
+		'bodies' => [],
 		// классы, реализующие \DurexKz\BotGuard\Contracts\ScannerRule
 		'custom' => [],
 	],

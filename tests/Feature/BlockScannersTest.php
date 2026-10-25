@@ -4,6 +4,7 @@ use DurexKz\BotGuard\Models\BannedIp;
 use DurexKz\BotGuard\ScannerDetector;
 use DurexKz\ErrorMonitor\Models\ErrorLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 function probe(string $uri, string $userAgent = 'Mozilla/5.0', string $method = 'GET', ?string $host = null): bool
 {
@@ -73,6 +74,29 @@ it('recognizes SQL injection probes without flagging ordinary search queries', f
 	] as $uri) {
 		expect(probe($uri))->toBeFalse($uri);
 	}
+});
+
+it('recognizes an RCE payload in the body of a request without a route, but not in real forms', function () {
+	// проба React Server Components / Next.js («React2Shell») — POST / с подменой прототипа и child_process
+	$payload = '["{\\"_response\\":{\\"_chunks\\":\\"$Q2\\",\\"_formData\\":{\\"get\\":\\"$1:constructor:constructor\\"},'
+		. '\\"_prefix\\":\\"var res=process.mainModule.require(\'child_process\').execSync(\'echo 1\')\\"},\\"then\\":\\"$1:__proto__:then\\"}"]';
+	$post = fn(string $uri, string $body, string $userAgent = 'Mozilla/5.0') => app(ScannerDetector::class)->isProbe(
+		Request::create($uri, 'POST', server: ['HTTP_USER_AGENT' => $userAgent, 'CONTENT_TYPE' => 'text/plain'], content: $body),
+	);
+
+	Route::post('/articles', fn() => 'saved');
+
+	expect($post('/', $payload))->toBeTrue()                                                     // POST на адрес только для GET
+		->and($post('/unknown-api', 'x=require("child_process")'))->toBeTrue()
+		->and($post('/articles', 'Пример: require("child_process").execSync("ls")'))->toBeFalse()   // своя форма — любой текст
+		->and($post('/', 'обычный текст'))->toBeFalse()
+		->and(probe('/', 'fasthttp'))->toBeTrue();
+
+	// по HTTP: 404 и пометка сканера в журнале
+	$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.5', 'HTTP_USER_AGENT' => 'Mozilla/5.0'])
+		->call('POST', '/', content: $payload)
+		->assertNotFound();
+	expect(ErrorLog::where('ip', '203.0.113.5')->where('is_scanner', true)->exists())->toBeTrue();
 });
 
 it('supports extra rules from config', function () {

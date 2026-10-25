@@ -2,6 +2,7 @@
 
 namespace DurexKz\BotGuard;
 
+use DurexKz\BotGuard\Console\AllowCommand;
 use DurexKz\BotGuard\Console\BanCommand;
 use DurexKz\BotGuard\Console\UnbanCommand;
 use DurexKz\ErrorMonitor\ErrorMonitor;
@@ -28,6 +29,10 @@ class BotGuardServiceProvider extends ServiceProvider
 			Gate::policy(BotGuard::model(), $policy);
 		}
 
+		if ($policy = config('bot-guard.allowed_policy')) {
+			Gate::policy(BotGuard::allowedModel(), $policy);
+		}
+
 		// журнал ошибок различает запросы сканеров по тем же правилам
 		if (class_exists(ErrorMonitor::class)) {
 			ErrorMonitor::detectScannersUsing(
@@ -47,6 +52,7 @@ class BotGuardServiceProvider extends ServiceProvider
 			$this->commands([
 				BanCommand::class,
 				UnbanCommand::class,
+				AllowCommand::class,
 			]);
 		}
 	}

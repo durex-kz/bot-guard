@@ -1,5 +1,6 @@
 <?php
 
+use DurexKz\BotGuard\Models\AllowedIp;
 use DurexKz\BotGuard\Models\BannedIp;
 use DurexKz\BotGuard\ScannerDetector;
 use DurexKz\ErrorMonitor\Models\ErrorLog;
@@ -212,6 +213,61 @@ it('caps the repeated ban and allows turning growth off', function () {
 
 	config()->set('bot-guard.auto_ban_multiplier', 1);
 	expect(BannedIp::autoBanHoursFor(5))->toBe(24);
+});
+
+it('lets an allowed subnet through and links the allow entry to the ban', function () {
+	foreach (range(1, config('bot-guard.probes_to_ban')) as $i) {
+		$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.5'])->get('/.env')->assertNotFound();
+	}
+	$ban = BannedIp::where('ip', '203.0.113.5')->firstOrFail();
+	$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.200'])->get('/login')->assertNotFound();
+
+	$allowed = AllowedIp::fromBan($ban, 7, 'Ложное срабатывание: офис за общим IP');
+
+	// ссылка на блокировку и её снимок; блокировка завершена, но осталась в справочнике
+	expect($allowed->banned_ip_id)->toBe($ban->id)
+		->and($allowed->network)->toBe('203.0.113.0/24')
+		->and($allowed->banned_snapshot['reason'])->toBe($ban->reason)
+		->and($allowed->banned_snapshot['ip'])->toBe('203.0.113.5')
+		->and((int) round(now()->diffInDays($allowed->allowed_until)))->toBe(7)
+		->and($allowed->bannedIp->is($ban))->toBeTrue()
+		->and($ban->fresh()->isActive())->toBeFalse();
+
+	// вся подсеть проходит: и обычные страницы, и то, что считалось бы пробой, без новой блокировки
+	$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.200'])->get('/login')->assertOk();
+	foreach (range(1, config('bot-guard.probes_to_ban') + 1) as $i) {
+		$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.5'])->get('/.env');
+	}
+	expect(BannedIp::where('network', '203.0.113.0/24')->active()->exists())->toBeFalse();
+
+	// снимок остаётся, даже если блокировку удалили (bot-guard:unban)
+	$ban->delete();
+	expect($allowed->fresh()->banned_snapshot['reason'])->toBe($allowed->banned_snapshot['reason'])
+		->and($allowed->fresh()->banned_ip_id)->toBe($ban->id);
+
+	// срок вышел — фильтр снова работает
+	$this->travel(8)->days();
+	$this->withServerVariables(['REMOTE_ADDR' => '203.0.113.5'])->get('/.env')->assertNotFound();
+});
+
+it('offers allow durations and allows from the console', function () {
+	expect(AllowedIp::durationOptions())->toBe(['1' => '1 день', '7' => '7 дней', '30' => '30 дней', 'forever' => 'Навсегда'])
+		->and(AllowedIp::untilFor('forever'))->toBeNull()
+		->and(AllowedIp::untilFor(null))->toBeNull()
+		->and((int) round(now()->diffInDays(AllowedIp::untilFor(30))))->toBe(30);
+
+	$ban = BannedIp::ban('198.51.100.7', 'вручную', 24);
+	$this->artisan('bot-guard:allow', ['ip' => '198.51.100.7', '--days' => 1])->assertSuccessful();
+
+	$allowed = AllowedIp::sole();
+	expect($allowed->banned_ip_id)->toBe($ban->id)
+		->and($ban->fresh()->isActive())->toBeFalse()
+		->and(AllowedIp::matchAllow('198.51.100.250'))->toBeTrue();
+
+	// без блокировки — просто запись, навсегда
+	$this->artisan('bot-guard:allow', ['ip' => '192.0.2.10'])->assertSuccessful();
+	expect(AllowedIp::where('ip', '192.0.2.10')->value('banned_ip_id'))->toBeNull()
+		->and(AllowedIp::where('ip', '192.0.2.10')->first()->allowed_until)->toBeNull();
 });
 
 it('never bans private addresses', function () {

@@ -48,5 +48,6 @@ abstract class TestCase extends Orchestra
 		parent::setUp();
 
 		BannedIp::flushCache();
+		\DurexKz\BotGuard\Models\AllowedIp::flushCache();
 	}
 }

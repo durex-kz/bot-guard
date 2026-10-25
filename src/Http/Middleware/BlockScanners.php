@@ -48,6 +48,11 @@ class BlockScanners
 		$ip = $request->ip();
 		$model = BotGuard::model();
 
+		// белый список: подсеть не блокируется и не проверяется правилами сканеров
+		if (BotGuard::allowedModel()::matchAllow($ip)) {
+			return $next($request);
+		}
+
 		if ($bannedIp = $model::matchBan($ip)) {
 			$model::registerHit($bannedIp);
 

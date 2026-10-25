@@ -28,6 +28,22 @@ return [
 	'policy' => \DurexKz\BotGuard\Policies\BannedIpPolicy::class,
 
 	/*
+	| Белый список: подсети, которые фильтр не трогает до указанного срока (запросы не отклоняются,
+	| не проверяются правилами сканеров, не ведут к автоблокировке). Запись обычно создаётся из
+	| заблокированного IP — тогда хранится ссылка на блокировку и её снимок, а блокировка завершается.
+	| allow_durations — сроки на выбор в днях, null — навсегда
+	*/
+	'allowed_table' => 'allowed_ips',
+
+	'allowed_model' => \DurexKz\BotGuard\Models\AllowedIp::class,
+
+	'allowed_policy' => \DurexKz\BotGuard\Policies\AllowedIpPolicy::class,
+
+	'allowed_cache_key' => 'allowed-ips',
+
+	'allow_durations' => [1, 7, 30, null],
+
+	/*
 	| Автоблокировка: после probes_to_ban запросов сканера из одной подсети за probes_window_minutes
 	| минут IP заносится в справочник на auto_ban_hours часов, а с ним блокируется его подсеть.
 	| Порог больше одного — чтобы одна случайная ссылка пользователя за общим IP (офис, мобильный

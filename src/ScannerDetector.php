@@ -32,7 +32,10 @@ class ScannerDetector
 		// Grafana (api/org), OpenAI-совместимые LLM-шлюзы (v1/models)
 		. '|_debugbar|api/session/properties|api/v1/dags|api/org|v1/models'
 		// файлы зависимостей с версиями пакетов — по ним подбирают известные уязвимости
-		. '|composer\.(json|lock)|vendor/composer/installed\.json|package(-lock)?\.json|yarn\.lock)(/|$)',
+		. '|composer\.(json|lock)|vendor/composer/installed\.json|package(-lock)?\.json|yarn\.lock'
+		// файлы с секретами и ключами доступа: secrets.json, credentials.json, appsettings*.json (.NET),
+		// service-account.json (ключ Google Cloud)
+		. '|secrets?\.json|credentials?\.json|appsettings(\.[\w-]+)?\.json|service-account\.json)(/|$)',
 	];
 
 	/**

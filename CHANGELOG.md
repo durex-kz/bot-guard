@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.10 — 2026-10-26
+
+- Правило сканеров: файлы с секретами и ключами доступа — `secrets.json`, `secret.json`, `credentials.json`,
+  `appsettings*.json`, `service-account.json`.
+
 ## v0.1.9 — 2026-10-25
 
 - Белый список (`allowed_ips`, модель `AllowedIp`): подсеть IP, которую фильтр не трогает до `allowed_until`

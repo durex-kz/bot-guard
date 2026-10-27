@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.11 — 2026-10-27
+
+- Правило сканеров «RCE в теле запроса без маршрута» распознаёт обфусцированные пробы React2Shell: тело проверяется
+  и после раскодирования (URL-кодирование, `\u005f` / `\x5f` любой глубины); новые признаки — поля Server Action
+  Next.js (`$ACTION_REF_0`, `$ACTION_0:0`, `$ACTION_ID_…`), ключи протокола RSC (`_response`, `_prefix`, `resolved_model`),
+  `__proto__`, косвенный `(0,eval)`. Тест на телах настоящих проб (`tests/Fixtures/react2shell-bodies.json`).
+
 ## v0.1.10 — 2026-10-26
 
 - Правило сканеров: файлы с секретами и ключами доступа — `secrets.json`, `secret.json`, `credentials.json`,

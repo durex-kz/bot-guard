@@ -87,6 +87,11 @@ class ScannerDetector
 		// React Server Components / Next.js («React2Shell»): подмена прототипа в теле Server Action
 		// (_formData.get = "$1:constructor:constructor", then = "$1:__proto__:then") и вызов child_process
 		'\$\d+:constructor:constructor|:__proto__:then|process\.mainModule|child_process',
+		// обфусцированные варианты той же пробы (имена спрятаны в \u005f…, Buffer собирается переворотом строки,
+		// нагрузка в base64): признаки, без которых эксплойт не работает, — поля Server Action Next.js
+		// ($ACTION_REF_0, $ACTION_0:0, $ACTION_ID_…), ключи протокола RSC (_response, _prefix, resolved_model),
+		// подмена прототипа и косвенный eval. Проверяется раскодированное тело (normalizeBody)
+		'\$ACTION_(?:REF_\d|ID_|\d+:)|"_response"\s*:|"_prefix"\s*:|resolved_model|__proto__|\(\s*0\s*,\s*eval\s*\)',
 	];
 
 	/**
@@ -144,8 +149,9 @@ class ScannerDetector
 		}
 
 		$body = substr((string) $request->getContent(), 0, static::BODY_LIMIT);
+		$rules = [...static::BODY_RULES, ...$this->extra('bodies')];
 
-		if ($body === '' || !$this->matches([...static::BODY_RULES, ...$this->extra('bodies')], $body)) {
+		if ($body === '' || (!$this->matches($rules, $body) && !$this->matches($rules, $this->normalizeBody($body)))) {
 			return false;
 		}
 
@@ -155,6 +161,21 @@ class ScannerDetector
 			// NotFoundHttpException / MethodNotAllowedHttpException — маршрута нет
 			return true;
 		}
+	}
+
+	/**
+	 * Тело без маскировки: URL-кодирование (%24ACTION%5FREF_0) и экранирование \u005f / \x5f любой глубины
+	 * (JSON внутри JSON даёт \\\\u005f) — по два прохода
+	 */
+	protected function normalizeBody(string $body): string
+	{
+		for ($i = 0; $i < 2; $i++) {
+			$body = urldecode($body);
+			$body = preg_replace_callback('~\\\\+u([0-9a-fA-F]{4})~', fn(array $m): string => mb_chr(hexdec($m[1]), 'UTF-8') ?: '', $body) ?? $body;
+			$body = preg_replace_callback('~\\\\+x([0-9a-fA-F]{2})~', fn(array $m): string => chr(hexdec($m[1])), $body) ?? $body;
+		}
+
+		return $body;
 	}
 
 	protected function matches(array $rules, string $subject): bool

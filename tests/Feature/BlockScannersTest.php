@@ -105,6 +105,27 @@ it('recognizes an RCE payload in the body of a request without a route, but not 
 	expect(ErrorLog::where('ip', '203.0.113.5')->where('is_scanner', true)->exists())->toBeTrue();
 });
 
+it('recognizes obfuscated React2Shell probes from the wild, but not the same text in a real form', function () {
+	// тела настоящих проб из журнала QazPress: \u005f-экранирование, Buffer через переворот строки, base64,
+	// поля Server Action Next.js ($ACTION_REF_0, $ACTION_0:0), двоичные поля-заглушки, браузерный User-Agent
+	$bodies = array_map('base64_decode', json_decode(file_get_contents(__DIR__ . '/../Fixtures/react2shell-bodies.json'), true));
+	$post = fn(string $uri, string $body) => app(ScannerDetector::class)->isProbe(Request::create($uri, 'POST', server: [
+		'HTTP_USER_AGENT' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0 Safari/537.36',
+		'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+	], content: $body));
+
+	Route::post('/articles', fn() => 'saved');
+
+	expect($bodies)->toHaveCount(7);
+	foreach ($bodies as $i => $body) {
+		expect($post('/', $body))->toBeTrue("проба №{$i}");
+	}
+
+	// тот же текст в существующей форме (статья о React/Next.js) — не проба
+	expect($post('/articles', $bodies[5]))->toBeFalse()
+		->and($post('/', 'text=' . rawurlencode('Обычный текст о $ACTION в документации')))->toBeFalse();
+});
+
 it('supports extra rules from config', function () {
 	expect(probe('/old-admin'))->toBeFalse();
 

@@ -37,6 +37,12 @@ it('recognizes scanner probes from both projects', function () {
 		->and(probe('/composer.json'))->toBeTrue()
 		->and(probe('/vendor/composer/installed.json'))->toBeTrue()
 		->and(probe('/package-lock.json'))->toBeTrue()
+		->and(probe('/mcp', 'Mozilla/5.0', 'POST'))->toBeTrue()                     // поиск MCP-серверов
+		->and(probe('/sse'))->toBeTrue()
+		->and(probe('/', 'python-httpx/0.28.1'))->toBeTrue()
+		->and(probe('/', 'Python/3.12 aiohttp/3.9.5'))->toBeTrue()
+		->and(probe('/docs/mcp-guide'))->toBeFalse()
+		->and(probe('/posts/sse-events'))->toBeFalse()
 		->and(probe('/secrets.json'))->toBeTrue()
 		->and(probe('/credentials.json'))->toBeTrue()
 		->and(probe('/appsettings.Production.json'))->toBeTrue()

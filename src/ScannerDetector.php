@@ -35,7 +35,9 @@ class ScannerDetector
 		. '|composer\.(json|lock)|vendor/composer/installed\.json|package(-lock)?\.json|yarn\.lock'
 		// файлы с секретами и ключами доступа: secrets.json, credentials.json, appsettings*.json (.NET),
 		// service-account.json (ключ Google Cloud)
-		. '|secrets?\.json|credentials?\.json|appsettings(\.[\w-]+)?\.json|service-account\.json)(/|$)',
+		. '|secrets?\.json|credentials?\.json|appsettings(\.[\w-]+)?\.json|service-account\.json'
+		// поиск открытых MCP-серверов (Model Context Protocol — подключение ИИ-агентов к инструментам): /mcp, /sse
+		. '|mcp|sse)(/|$)',
 	];
 
 	/**
@@ -74,7 +76,7 @@ class ScannerDetector
 		// «scanner» — но не приложения-сканеры QR-кодов: по QR открывают документы и отчёты
 		'(?<!qr)(?<!qr[- ])scanner',
 		// скриптовые HTTP-клиенты: обычные пользователи ими не ходят (существующие API — trust_existing_routes)
-		'python-requests|python-urllib|fasthttp',
+		'python-requests|python-urllib|python-httpx|aiohttp|fasthttp',
 		// проверки конкретных уязвимостей называют себя по номеру CVE: cve-2026-63030/1.0, metabase-cve-2026-72898-detect
 		'\bcve-\d{4}-\d+',
 	];

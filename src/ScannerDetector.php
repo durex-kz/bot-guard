@@ -37,7 +37,18 @@ class ScannerDetector
 		// service-account.json (ключ Google Cloud)
 		. '|secrets?\.json|credentials?\.json|appsettings(\.[\w-]+)?\.json|service-account\.json'
 		// поиск открытых MCP-серверов (Model Context Protocol — подключение ИИ-агентов к инструментам): /mcp, /sse
-		. '|mcp|sse)(/|$)',
+		. '|mcp|sse'
+		// служебные адреса Next.js / React Server Components: на них проверяют React2Shell
+		. '|_next|_?_rsc|__nextjs_action|_middleware|rsc/.+\.txt)(/|$)',
+		// исходники и настройки других платформ (Python, Ruby, Java, .NET, Node.js, Angular, Docker): у PHP-сайта
+		// таких файлов нет, по ним ищут ключи и пароли к базам
+		'\.(properties|py|rb|enc)$|/dockerfile$|/(web|nuget)(\.[\w-]+)?\.config$|/readme\.md$',
+		'/((ts|js)config(\.[\w-]+)?|angular|bundleconfig|launchsettings|hosting|settings|env|meteor\.settings)\.json$',
+		// кроме скриптов компонентов Livewire (/livewire-…/js/{component}.js)
+		'^(?!/livewire[\w-]*/).*/(ecosystem\.config|(karma|protractor)\.conf|(vue|next|nuxt)\.config|config-overrides|gulpfile|gruntfile'
+		. '|setupproxy|setuptests|config|settings|env|constants)\.js$|/environment(\.[\w-]+)?\.ts$',
+		// каталоги настроек: /config/aws.json, /src/config/settings.ts, /instance/config.py
+		'^/(config|conf|src|instance)/.+\.(js|ts|json|xml)$',
 	];
 
 	/**
@@ -94,6 +105,9 @@ class ScannerDetector
 		// ($ACTION_REF_0, $ACTION_0:0, $ACTION_ID_…), ключи протокола RSC (_response, _prefix, resolved_model),
 		// подмена прототипа и косвенный eval. Проверяется раскодированное тело (normalizeBody)
 		'\$ACTION_(?:REF_\d|ID_|\d+:)|"_response"\s*:|"_prefix"\s*:|resolved_model|__proto__|\(\s*0\s*,\s*eval\s*\)',
+		// проверочная проба React2Shell без нагрузки: ссылка RSC на свойство чанка ["$1:aa:aa"] — по ответу
+		// сервера видно, обрабатывает ли он Server Actions
+		'\[\\\\*"\$\d+:\w+:\w+\\\\*"\]',
 	];
 
 	/**

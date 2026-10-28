@@ -18,11 +18,14 @@ composer require durex-kz/bot-guard
 php artisan migrate
 ```
 
-`bootstrap/app.php`. Middleware ставится после TrustProxies, потому что ему нужен настоящий IP клиента:
+`bootstrap/app.php`. Middleware ставится после TrustProxies, потому что ему нужен настоящий IP клиента.
+Доверять стоит только своим прокси, не `'*'`: если nginx передаёт запрос в PHP напрямую, с `'*'` любой посетитель
+подставляет себе IP заголовком `X-Forwarded-For: 127.0.0.1` — частные адреса не блокируются, и сканер проходит
+мимо блокировок и ограничений попыток по IP:
 
 ```php
 ->withMiddleware(function (Middleware $middleware) {
-    $middleware->trustProxies(at: '*');
+    $middleware->trustProxies(at: ['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']);
     $middleware->append(\DurexKz\BotGuard\Http\Middleware\BlockScanners::class);
 })
 ```

@@ -18,7 +18,8 @@ use Throwable;
  * настоящий IP клиента), до сессии и маршрутизации, поэтому отказ почти ничего не стоит:
  *
  *   ->withMiddleware(function (Middleware $middleware) {
- *       $middleware->trustProxies(at: '*');
+ *       // только свои прокси: с '*' посетитель подставляет себе IP через X-Forwarded-For
+ *       $middleware->trustProxies(at: ['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']);
  *       $middleware->append(\DurexKz\BotGuard\Http\Middleware\BlockScanners::class);
  *   })
  *

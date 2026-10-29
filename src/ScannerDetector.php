@@ -39,7 +39,9 @@ class ScannerDetector
 		// поиск открытых MCP-серверов (Model Context Protocol — подключение ИИ-агентов к инструментам): /mcp, /sse
 		. '|mcp|sse'
 		// служебные адреса Next.js / React Server Components: на них проверяют React2Shell
-		. '|_next|_?_rsc|__nextjs_action|_middleware|rsc/.+\.txt)(/|$)',
+		. '|_next|_?_rsc|__nextjs_action|_middleware|rsc/.+\.txt'
+		// открытые NoSQL-базы и поисковые движки: CouchDB (_all_dbs, _utils), Elasticsearch (_cluster, _cat, _nodes…)
+		. '|_all_dbs|_utils|_cluster|_cat|_nodes|_snapshot|_watcher|_aliases|_mapping)(/|$)',
 		// исходники и настройки других платформ (Python, Ruby, Java, .NET, Node.js, Angular, Docker): у PHP-сайта
 		// таких файлов нет, по ним ищут ключи и пароли к базам
 		'\.(properties|py|rb|enc)$|/dockerfile$|/(web|nuget)(\.[\w-]+)?\.config$|/readme\.md$',
@@ -90,6 +92,8 @@ class ScannerDetector
 		'python-requests|python-urllib|python-httpx|aiohttp|fasthttp',
 		// проверки конкретных уязвимостей называют себя по номеру CVE: cve-2026-63030/1.0, metabase-cve-2026-72898-detect
 		'\bcve-\d{4}-\d+',
+		// сборщики адресов открытых баз данных: nosql-domain-extractor/2.0
+		'nosql-',
 	];
 
 	/**
@@ -105,6 +109,9 @@ class ScannerDetector
 		// ($ACTION_REF_0, $ACTION_0:0, $ACTION_ID_…), ключи протокола RSC (_response, _prefix, resolved_model),
 		// подмена прототипа и косвенный eval. Проверяется раскодированное тело (normalizeBody)
 		'\$ACTION_(?:REF_\d|ID_|\d+:)|"_response"\s*:|"_prefix"\s*:|resolved_model|__proto__|\(\s*0\s*,\s*eval\s*\)',
+		// ботнет Androxgh0st и его клоны: POST / с полем-массивом 0x[]=androxgh0st (0x[]=ridho) — по ответу
+		// ищут сайты Laravel с открытым режимом отладки, чтобы забрать .env
+		'(?:^|&)0x\[\]=',
 		// проверочная проба React2Shell без нагрузки: ссылка RSC на свойство чанка ["$1:aa:aa"] — по ответу
 		// сервера видно, обрабатывает ли он Server Actions
 		'\[\\\\*"\$\d+:\w+:\w+\\\\*"\]',

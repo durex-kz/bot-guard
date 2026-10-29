@@ -69,6 +69,11 @@ it('recognizes scanner probes from both projects', function () {
 		->and(probe('/__nextjs_action', 'Mozilla/5.0', 'POST'))->toBeTrue()
 		->and(probe('/_rsc', 'Mozilla/5.0', 'POST'))->toBeTrue()
 		->and(probe('/RSC/R/sxbl1eyy3gmdzap.txt', 'Mozilla/5.0', 'POST'))->toBeTrue()
+		->and(probe('/_all_dbs'))->toBeTrue()                                        // CouchDB
+		->and(probe('/_cluster/health'))->toBeTrue()                                 // Elasticsearch
+		->and(probe('/_cat/indices'))->toBeTrue()
+		->and(probe('/', 'nosql-domain-extractor/2.0'))->toBeTrue()
+		->and(probe('/news/cluster-health'))->toBeFalse()
 		->and(probe('/livewire-f9fcf158/js/settings.js'))->toBeFalse()
 		->and(probe('/build/assets/app-4f2a.js'))->toBeFalse()
 		->and(probe('/js/app.js'))->toBeFalse()
@@ -133,6 +138,10 @@ it('recognizes an RCE payload in the body of a request without a route, but not 
 		->and($post('/', '{"1":"{}","0":"[\\"$1:aa:aa\\"]"}'))->toBeTrue()
 		->and($post('/', '1=%7B%7D&0=%5B%22%241%3Aaa%3Aaa%22%5D'))->toBeTrue()
 		->and($post('/articles', '["$1:aa:aa"]'))->toBeFalse()
+		// Androxgh0st и клоны (QazPress, 29.10): POST / 0x[]=ridho
+		->and($post('/', '0x%5B%5D=ridho'))->toBeTrue()
+		->and($post('/', '0x[]=androxgh0st'))->toBeTrue()
+		->and($post('/', 'color=0x[]=1'))->toBeFalse()
 		->and(probe('/', 'fasthttp'))->toBeTrue();
 
 	// по HTTP: 404 и пометка сканера в журнале

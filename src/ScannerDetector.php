@@ -171,7 +171,7 @@ class ScannerDetector
 			return false;
 		}
 
-		$body = substr((string) $request->getContent(), 0, static::BODY_LIMIT);
+		$body = substr((string) $request->getContent() ?: $this->formBody($request), 0, static::BODY_LIMIT);
 		$rules = [...static::BODY_RULES, ...$this->extra('bodies')];
 
 		if ($body === '' || (!$this->matches($rules, $body) && !$this->matches($rules, $this->normalizeBody($body)))) {
@@ -184,6 +184,29 @@ class ScannerDetector
 			// NotFoundHttpException / MethodNotAllowedHttpException — маршрута нет
 			return true;
 		}
+	}
+
+	/**
+	 * Поля формы строкой name=value&…: у multipart/form-data (так шлёт Server Actions Next.js и проба React2Shell)
+	 * PHP разбирает тело сам и сырого тела не отдаёт — без этого проверялась бы пустая строка
+	 */
+	protected function formBody(Request $request): string
+	{
+		$pairs = [];
+		$walk = function (array $data, string $prefix) use (&$walk, &$pairs): void {
+			foreach ($data as $key => $value) {
+				$name = $prefix === '' ? (string) $key : $prefix . (array_is_list($data) ? '[]' : "[{$key}]");
+
+				if (is_array($value)) {
+					$walk($value, $name);
+				} else {
+					$pairs[] = $name . '=' . $value;
+				}
+			}
+		};
+		$walk($request->request->all(), '');
+
+		return implode('&', $pairs);
 	}
 
 	/**

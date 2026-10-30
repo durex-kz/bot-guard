@@ -172,6 +172,30 @@ it('recognizes obfuscated React2Shell probes from the wild, but not the same tex
 		->and($post('/', 'text=' . rawurlencode('Обычный текст о $ACTION в документации')))->toBeFalse();
 });
 
+it('recognizes React2Shell probes sent as multipart/form-data, where PHP gives no raw body', function () {
+	// QazPress, 30.10: те же пробы multipart-формой — getContent() пуст, поля уже разобраны в $request->request
+	$multipart = fn(string $uri, array $fields) => app(ScannerDetector::class)->isProbe(Request::create($uri, 'POST', $fields, server: [
+		'HTTP_USER_AGENT' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/146.0.0.0 Safari/537.36',
+		'CONTENT_TYPE' => 'multipart/form-data; boundary=x',
+	]));
+
+	Route::post('/articles', fn() => 'saved');
+
+	$fields = [
+		'data412' => null,
+		'$ACTION_REF_tqCwgB7' => 'x',
+		'$ACTION_tqCwgB7:0' => '{"id":"553f55e6b3d59c55f9c74950d20040563e16e286","bound":"$@1"}',
+		'$ACTION_tqCwgB7:1' => '{"\\u0073\\u0074\\u0061\\u0074\\u0075\\u0073":"\\u0072\\u0065\\u0073\\u006f\\u006c\\u0076\\u0065\\u0064\\u005f\\u006d\\u006f\\u0064\\u0065\\u006c"}',
+	];
+
+	expect($multipart('/', $fields))->toBeTrue()
+		->and($multipart('/', ['%24ACTION%5FREF%5F0' => 'x', '%24ACTION%5F0%3A0' => '{"bound":"$@1"}']))->toBeTrue()
+		->and($multipart('/', ['0' => '{"then":"$1:\\u005f\\u005fproto\\u005f\\u005f:then","reason":-1}']))->toBeTrue()
+		->and($multipart('/', ['0x' => ['androxgh0st']]))->toBeTrue()
+		->and($multipart('/articles', $fields))->toBeFalse()                    // своя форма — любой текст
+		->and($multipart('/', ['name' => 'Иван', 'text' => 'обычный текст']))->toBeFalse();
+});
+
 it('supports extra rules from config', function () {
 	expect(probe('/old-admin'))->toBeFalse();
 

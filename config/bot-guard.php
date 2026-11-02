@@ -44,6 +44,29 @@ return [
 	'allow_durations' => [1, 7, 30, null],
 
 	/*
+	| Белый список стран: пока в нём есть действующие записи, сайт отвечает только посетителям из этих стран,
+	| остальным — 403 с объяснением (response.body, :country — название страны, :code — её код). Страна IP —
+	| по локальной базе GeoLite2 (раздел geoip ниже). Проверка идёт после белого списка IP (он главнее:
+	| разрешённая подсеть проходит из любой страны) и до блокировок и правил сканеров.
+	| Страна размещения сайта разрешена всегда: home — её код, null — страна часового пояса приложения
+	| (Asia/Almaty → KZ); если действующей записи о ней нет, она добавляется автоматически на home_years лет.
+	| Не ограничиваются: частные адреса, IP, которых нет в базе, сайт без базы GeoLite2, пустой список
+	*/
+	'countries' => [
+		'enabled' => env('BOT_GUARD_COUNTRIES', true),
+		'home' => env('BOT_GUARD_HOME_COUNTRY'),
+		'home_years' => 10,
+		'table' => 'allowed_countries',
+		'model' => \DurexKz\BotGuard\Models\AllowedCountry::class,
+		'policy' => \DurexKz\BotGuard\Policies\AllowedCountryPolicy::class,
+		'cache_key' => 'allowed-countries',
+		'response' => [
+			'status' => 403,
+			'body' => "403 — Доступ запрещён: обращения из вашей страны (:country) к этому сайту не разрешены.\n403 — Forbidden: access from your country (:code) is not allowed.",
+		],
+	],
+
+	/*
 	| Автоблокировка: после probes_to_ban запросов сканера из одной подсети за probes_window_minutes
 	| минут IP заносится в справочник на auto_ban_hours часов, а с ним блокируется его подсеть.
 	| Порог больше одного — чтобы одна случайная ссылка пользователя за общим IP (офис, мобильный

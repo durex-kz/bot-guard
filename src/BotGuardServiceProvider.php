@@ -3,6 +3,7 @@
 namespace DurexKz\BotGuard;
 
 use DurexKz\BotGuard\Console\AllowCommand;
+use DurexKz\BotGuard\Console\AllowCountryCommand;
 use DurexKz\BotGuard\Console\BanCommand;
 use DurexKz\BotGuard\Console\GeoIpFillCommand;
 use DurexKz\BotGuard\Console\GeoIpUpdateCommand;
@@ -36,6 +37,10 @@ class BotGuardServiceProvider extends ServiceProvider
 			Gate::policy(BotGuard::allowedModel(), $policy);
 		}
 
+		if ($policy = config('bot-guard.countries.policy')) {
+			Gate::policy(BotGuard::allowedCountryModel(), $policy);
+		}
+
 		// журнал ошибок различает запросы сканеров по тем же правилам
 		if (class_exists(ErrorMonitor::class)) {
 			ErrorMonitor::detectScannersUsing(
@@ -56,6 +61,7 @@ class BotGuardServiceProvider extends ServiceProvider
 				BanCommand::class,
 				UnbanCommand::class,
 				AllowCommand::class,
+				AllowCountryCommand::class,
 				GeoIpUpdateCommand::class,
 				GeoIpFillCommand::class,
 			]);

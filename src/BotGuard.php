@@ -2,6 +2,7 @@
 
 namespace DurexKz\BotGuard;
 
+use DurexKz\BotGuard\Models\AllowedCountry;
 use DurexKz\BotGuard\Models\AllowedIp;
 use DurexKz\BotGuard\Models\BannedIp;
 use Illuminate\Support\Facades\Gate;
@@ -22,6 +23,14 @@ class BotGuard
 	public static function allowedModel(): string
 	{
 		return config('bot-guard.allowed_model', AllowedIp::class);
+	}
+
+	/**
+	 * @return class-string<AllowedCountry>
+	 */
+	public static function allowedCountryModel(): string
+	{
+		return config('bot-guard.countries.model', AllowedCountry::class);
 	}
 
 	/**

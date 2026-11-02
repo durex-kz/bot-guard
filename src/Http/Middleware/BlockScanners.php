@@ -4,6 +4,7 @@ namespace DurexKz\BotGuard\Http\Middleware;
 
 use Closure;
 use DurexKz\BotGuard\BotGuard;
+use DurexKz\BotGuard\GeoIp;
 use DurexKz\BotGuard\ScannerDetector;
 use DurexKz\ErrorMonitor\ErrorMonitor;
 use Illuminate\Http\Request;
@@ -23,6 +24,9 @@ use Throwable;
  *       $middleware->append(\DurexKz\BotGuard\Http\Middleware\BlockScanners::class);
  *   })
  *
+ * - белый список IP (AllowedIp) главнее всех проверок ниже: подсеть проходит из любой страны;
+ * - белый список стран (AllowedCountry): если он не пуст, посетитель из страны не из списка → 403 с объяснением
+ *   (страна — по локальной базе GeoLite2; нет базы или IP в ней — пропускаем);
  * - IP из подсети заблокированного адреса (справочник BannedIp) → 404, в журнал ошибок не пишется,
  *   только счётчик hits у записи справочника;
  * - запрос по правилам ScannerDetector → 404 и запись в журнал ошибок (если установлен error-monitor:
@@ -32,11 +36,11 @@ use Throwable;
  *   секунд — тоже сканер, даже если адреса обычные (/purchases, /lots, /trades): его 404 в журнале
  *   помечаются сканерными, а запросы серии учитываются в автоблокировке
  *
- * Ответ 404, а не 403: сканеру не сообщаем, что его распознали
+ * Сканеру и заблокированной подсети — 404, а не 403: не сообщаем, что его распознали
  */
 class BlockScanners
 {
-	public function __construct(protected ScannerDetector $detector)
+	public function __construct(protected ScannerDetector $detector, protected GeoIp $geoIp)
 	{
 	}
 
@@ -52,6 +56,11 @@ class BlockScanners
 		// белый список: подсеть не блокируется и не проверяется правилами сканеров
 		if (BotGuard::allowedModel()::matchAllow($ip)) {
 			return $next($request);
+		}
+
+		// белый список стран — после белого списка IP, до блокировок и правил сканеров
+		if ($geo = $this->forbiddenCountry($ip)) {
+			return $this->rejectCountry($geo);
 		}
 
 		if ($bannedIp = $model::matchBan($ip)) {
@@ -249,6 +258,51 @@ class BlockScanners
 		} catch (Throwable) {
 			return false;
 		}
+	}
+
+	/**
+	 * Страна IP не в белом списке стран — её код и название; иначе null. Сначала список (по кэшу): пустой —
+	 * ограничения нет, базу GeoLite2 не открываем. Частные адреса, IP без страны в базе, нет базы — null
+	 *
+	 * @return array{country_code: string, country: ?string}|null
+	 */
+	protected function forbiddenCountry(?string $ip): ?array
+	{
+		if (!config('bot-guard.countries.enabled', true) || !BotGuard::isPublicIp($ip)) {
+			return null;
+		}
+
+		$model = BotGuard::allowedCountryModel();
+
+		try {
+			if (!$model::restricts($model::activeMap())) {
+				return null;
+			}
+		} catch (Throwable) {
+			return null;
+		}
+
+		$geo = $this->geoIp->lookup($ip);
+
+		if (blank($geo['country_code'] ?? null) || $model::isAllowed($geo['country_code'])) {
+			return null;
+		}
+
+		return ['country_code' => $geo['country_code'], 'country' => $geo['country'] ?? null];
+	}
+
+	protected function rejectCountry(array $geo): Response
+	{
+		$code = strtoupper($geo['country_code']);
+
+		return response(
+			strtr((string) config('bot-guard.countries.response.body', '403 Forbidden'), [
+				':country' => $geo['country'] ?: $code,
+				':code' => $code,
+			]),
+			(int) config('bot-guard.countries.response.status', 403),
+			['Content-Type' => 'text/plain; charset=UTF-8'],
+		);
 	}
 
 	protected function reject(): Response

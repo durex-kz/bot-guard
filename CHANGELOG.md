@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.16 — 2026-11-02
+
+- Страна и город заблокированного IP: определяются при блокировке по локальной базе MaxMind GeoLite2-City
+  (`maxmind-db/reader`, без обращения к сети) и хранятся в колонках `country_code`, `country`, `city`.
+  Нет базы — блокировка работает как обычно. `BannedIp::location()`, `BannedIp::flag()`.
+- Команды `bot-guard:geoip-update` (скачать базу с учётной записью MaxMind и заполнить пустые записи) и
+  `bot-guard:geoip-fill {--all}`. Настройки — `geoip` в конфиге.
+- Миграция: колонки `country_code`, `country`, `city` в `banned_ips`.
+
+## v0.1.15 — 2026-10-30
+
+- Правила тела запроса проверяют и multipart/form-data: PHP не отдаёт его сырое тело, поэтому пробы React2Shell
+  multipart-формой проходили мимо.
+
+## v0.1.13 – v0.1.14 — 2026-10-29
+
+- Правила сканеров: исходники и настройки других платформ, служебные адреса Next.js, CouchDB/Elasticsearch,
+  `nosql-domain-extractor`, Androxgh0st (`0x[]=…`), проверочная проба React2Shell `["$1:aa:aa"]`.
+
 ## v0.1.12 — 2026-10-28
 
 - Правила сканеров: поиск открытых MCP-серверов (Model Context Protocol) — пути `/mcp`, `/sse`;

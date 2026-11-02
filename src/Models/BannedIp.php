@@ -4,6 +4,7 @@ namespace DurexKz\BotGuard\Models;
 
 use Carbon\Carbon;
 use DurexKz\BotGuard\BotGuard;
+use DurexKz\BotGuard\GeoIp;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,6 +27,9 @@ use Throwable;
  * @property ?Carbon $last_hit_at
  * @property ?string $network
  * @property int $ban_count
+ * @property ?string $country_code
+ * @property ?string $country
+ * @property ?string $city
  */
 class BannedIp extends Model
 {
@@ -41,6 +45,9 @@ class BannedIp extends Model
 		'created_by',
 		'network',
 		'ban_count',
+		'country_code',
+		'country',
+		'city',
 	];
 
 	public function getTable(): string
@@ -68,6 +75,11 @@ class BannedIp extends Model
 		// подсеть записи — для подсчёта повторных атак (повтор может прийти с другого IP той же подсети)
 		static::saving(function (self $ban) {
 			$ban->network = static::networkOf((string) $ban->ip);
+
+			// страна и город — один раз при блокировке (и при смене IP), по локальной базе GeoLite2
+			if ($ban->isDirty('ip') || ($ban->country_code === null && !$ban->exists)) {
+				$ban->fillGeo();
+			}
 		});
 
 		// созданную вручную запись помечаем автором
@@ -76,6 +88,53 @@ class BannedIp extends Model
 				$ban->created_by = auth()->id();
 			}
 		});
+	}
+
+	/**
+	 * Страна и город по базе GeoLite2 (DurexKz\BotGuard\GeoIp). Адреса нет в базе — поля пустые;
+	 * базы нет — не трогаем: заполнит bot-guard:geoip-fill. Возвращает, найдено ли место
+	 */
+	public function fillGeo(): bool
+	{
+		try {
+			$geoIp = app(GeoIp::class);
+
+			if (!$geoIp->available()) {
+				return false;
+			}
+
+			$geo = $geoIp->lookup((string) $this->ip);
+		} catch (Throwable) {
+			return false;
+		}
+
+		$this->forceFill([
+			'country_code' => $geo['country_code'] ?? null,
+			'country' => $geo['country'] ?? null,
+			'city' => $geo['city'] ?? null,
+		]);
+
+		return $geo !== null;
+	}
+
+	/**
+	 * «Казахстан, Алматы» / «Германия» / null
+	 */
+	public function location(): ?string
+	{
+		return implode(', ', array_filter([$this->country, $this->city])) ?: null;
+	}
+
+	/**
+	 * Флаг страны эмодзи по коду ISO: KZ → 🇰🇿
+	 */
+	public static function flag(?string $countryCode): ?string
+	{
+		if (!is_string($countryCode) || !preg_match('/^[A-Za-z]{2}$/', $countryCode)) {
+			return null;
+		}
+
+		return implode('', array_map(fn(string $letter): string => mb_chr(0x1F1E6 + ord($letter) - ord('A')), str_split(strtoupper($countryCode))));
 	}
 
 	public function creator(): BelongsTo

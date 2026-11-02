@@ -143,6 +143,22 @@ return [
 		'body' => 'Not Found',
 	],
 
+	/*
+	| Страна и город заблокированного IP: определяются один раз при блокировке по локальной базе MaxMind
+	| GeoLite2-City (файл .mmdb ~60 МБ, поиск — доли миллисекунды, без сети) и хранятся в записи.
+	| База скачивается командой bot-guard:geoip-update — нужна бесплатная учётная запись MaxMind
+	| (ID и ключ лицензии). database: null — storage/app/geoip/GeoLite2-City.mmdb.
+	| locales — язык названий: первый, который есть в базе
+	*/
+	'geoip' => [
+		'enabled' => env('BOT_GUARD_GEOIP', true),
+		'database' => env('BOT_GUARD_GEOIP_DATABASE'),
+		'account_id' => env('MAXMIND_ACCOUNT_ID'),
+		'license_key' => env('MAXMIND_LICENSE_KEY'),
+		'edition' => 'GeoLite2-City',
+		'locales' => ['ru', 'en'],
+	],
+
 	'cache_key' => 'banned-ips',
 
 	'run_migrations' => true,

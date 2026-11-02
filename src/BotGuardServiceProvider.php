@@ -4,6 +4,8 @@ namespace DurexKz\BotGuard;
 
 use DurexKz\BotGuard\Console\AllowCommand;
 use DurexKz\BotGuard\Console\BanCommand;
+use DurexKz\BotGuard\Console\GeoIpFillCommand;
+use DurexKz\BotGuard\Console\GeoIpUpdateCommand;
 use DurexKz\BotGuard\Console\UnbanCommand;
 use DurexKz\ErrorMonitor\ErrorMonitor;
 use Illuminate\Http\Request;
@@ -17,6 +19,7 @@ class BotGuardServiceProvider extends ServiceProvider
 		$this->mergeConfigFrom(__DIR__ . '/../config/bot-guard.php', 'bot-guard');
 
 		$this->app->singleton(ScannerDetector::class);
+		$this->app->singleton(GeoIp::class);
 	}
 
 	public function boot(): void
@@ -53,6 +56,8 @@ class BotGuardServiceProvider extends ServiceProvider
 				BanCommand::class,
 				UnbanCommand::class,
 				AllowCommand::class,
+				GeoIpUpdateCommand::class,
+				GeoIpFillCommand::class,
 			]);
 		}
 	}

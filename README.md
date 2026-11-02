@@ -69,6 +69,34 @@ php artisan bot-guard:unban 203.0.113.77   # снимает блокировку
 php artisan bot-guard:allow 203.0.113.77 --days=7 --reason="Офис за общим IP"   # белый список; без --days — навсегда
 ```
 
+## Страна и город
+
+При блокировке страна и город IP определяются по локальной базе [MaxMind GeoLite2-City](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data)
+и сохраняются в записи (`country_code`, `country`, `city`): в сеть ничего не уходит, поиск — доли миллисекунды,
+страница справочника просто читает готовые поля. Нет базы — блокировка работает как обычно, поля пустые.
+
+1. Бесплатная учётная запись на maxmind.com → GeoLite2 → «Manage License Keys» → новый ключ. В `.env`:
+
+   ```dotenv
+   MAXMIND_ACCOUNT_ID=123456
+   MAXMIND_LICENSE_KEY=xxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_mmk
+   ```
+
+2. Скачать базу (~60 МБ в `storage/app/geoip/GeoLite2-City.mmdb`) — команда сразу заполнит место у уже заблокированных IP:
+
+   ```bash
+   php artisan bot-guard:geoip-update
+   ```
+
+3. Обновлять раз в неделю (`routes/console.php`):
+
+   ```php
+   Schedule::command('bot-guard:geoip-update')->weekly();
+   ```
+
+`php artisan bot-guard:geoip-fill --all` — определить место заново у всех записей. Настройки — `geoip` в конфиге
+(путь к базе `BOT_GUARD_GEOIP_DATABASE`, язык названий `locales`, по умолчанию русский, иначе английский).
+
 ## Переход с кода в проекте (QazPress, «Апельсин»)
 
 Таблица `banned_ips` и миграция `2026_10_20_120000_create_banned_ips_table` остаются прежними, данные сохраняются.

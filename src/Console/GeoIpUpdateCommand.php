@@ -3,13 +3,10 @@
 namespace DurexKz\BotGuard\Console;
 
 use DurexKz\BotGuard\GeoIp;
-use FilesystemIterator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use MaxMind\Db\Reader;
-use PharData;
-use RecursiveIteratorIterator;
 use Throwable;
 
 /**
@@ -55,15 +52,7 @@ class GeoIpUpdateCommand extends Command
 			}
 
 			// в архиве — каталог GeoLite2-City_ГГГГММДД/ с файлом .mmdb
-			$mmdb = null;
-			foreach (new RecursiveIteratorIterator(new PharData($archive, FilesystemIterator::SKIP_DOTS)) as $file) {
-				if (str_ends_with($file->getFilename(), '.mmdb')) {
-					$mmdb = $file->getPathname();
-					break;
-				}
-			}
-
-			if ($mmdb === null || !copy($mmdb, $temp)) {
+			if (!$this->extractMmdb($archive, $temp)) {
 				$this->error('В архиве MaxMind нет файла .mmdb');
 
 				return self::FAILURE;
@@ -88,5 +77,82 @@ class GeoIpUpdateCommand extends Command
 		}
 
 		return self::SUCCESS;
+	}
+
+	/**
+	 * Достать .mmdb из .tar.gz потоком, кусками по 1 МБ: PharData разворачивает архив (~60 МБ) в память целиком
+	 * и упирается в memory_limit. Формат tar: заголовок 512 байт (имя — байты 0–99, префикс пути — 345–499,
+	 * размер восьмеричным — 124–135), затем данные, дополненные до кратного 512
+	 */
+	protected function extractMmdb(string $archive, string $target): bool
+	{
+		$gz = gzopen($archive, 'rb');
+
+		if ($gz === false) {
+			return false;
+		}
+
+		try {
+			while (strlen($header = $this->readExactly($gz, 512)) === 512 && trim($header, "\0") !== '') {
+				$name = rtrim(substr($header, 345, 155), "\0") . '/' . rtrim(substr($header, 0, 100), "\0");
+				$size = octdec(trim(substr($header, 124, 12), "\0 "));
+				$padded = (int) (ceil($size / 512) * 512);
+				$type = $header[156];
+
+				// ._имя — служебная копия атрибутов файла macOS, не база
+				if (($type === '0' || $type === "\0") && str_ends_with($name, '.mmdb') && !str_starts_with(basename($name), '._')) {
+					$out = fopen($target, 'wb');
+
+					for ($left = $size; $left > 0; $left -= strlen($chunk)) {
+						$chunk = $this->readExactly($gz, (int) min(1048576, $left));
+
+						if ($chunk === '') {
+							fclose($out);
+
+							return false;
+						}
+
+						fwrite($out, $chunk);
+					}
+
+					fclose($out);
+
+					return true;
+				}
+
+				// пропустить данные записи (каталог, лицензия, README)
+				for ($left = $padded; $left > 0; $left -= strlen($chunk)) {
+					if (($chunk = $this->readExactly($gz, (int) min(1048576, $left))) === '') {
+						return false;
+					}
+				}
+			}
+		} finally {
+			gzclose($gz);
+		}
+
+		return false;
+	}
+
+	/**
+	 * gzread может вернуть меньше запрошенного — дочитываем до $length или конца архива
+	 *
+	 * @param resource $gz
+	 */
+	protected function readExactly($gz, int $length): string
+	{
+		$data = '';
+
+		while (strlen($data) < $length && !gzeof($gz)) {
+			$chunk = gzread($gz, $length - strlen($data));
+
+			if ($chunk === false || $chunk === '') {
+				break;
+			}
+
+			$data .= $chunk;
+		}
+
+		return $data;
 	}
 }

@@ -34,6 +34,13 @@ it('recognizes scanner probes from both projects', function () {
 		->and(probe('/', 'Mozilla/5.0', 'PROPFIND'))->toBeTrue()
 		->and(probe('/', 'Mozilla/5.0', 'GET', '203.0.113.10'))->toBeTrue()
 		->and(probe('/composer.lock'))->toBeTrue()
+		// распределённый сканер: медиафайлы со случайными именами в корне
+		->and(probe('/e433d6507ba48b952389d568353dac4cc6655d58.flv'))->toBeTrue()
+		->and(probe('/7c17a9c36602.webm'))->toBeTrue()
+		->and(probe('/d351812001eab24aa97b86.mpeg'))->toBeTrue()
+		->and(probe('/c62b45b6e60261de1a6d02.mka'))->toBeTrue()
+		->and(probe('/storage/media/7c17a9c36602.mp4'))->toBeFalse()             // загруженное видео сайта
+		->and(probe('/intro.mp4'))->toBeFalse()
 		->and(probe('/composer.json'))->toBeTrue()
 		->and(probe('/vendor/composer/installed.json'))->toBeTrue()
 		->and(probe('/package-lock.json'))->toBeTrue()

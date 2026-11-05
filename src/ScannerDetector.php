@@ -51,6 +51,9 @@ class ScannerDetector
 		. '|setupproxy|setuptests|config|settings|env|constants)\.js$|/environment(\.[\w-]+)?\.ts$',
 		// каталоги настроек: /config/aws.json, /src/config/settings.ts, /instance/config.py
 		'^/(config|conf|src|instance)/.+\.(js|ts|json|xml)$',
+		// медиафайл со случайным шестнадцатеричным именем в корне (/19466b2dbd.flv, /7c17a9c36602.webm): распределённый
+		// сканер проверяет, как сайт отвечает на несуществующие файлы, — запросы с разных подсетей в одну секунду
+		'^/[0-9a-f]{8,}\.(flv|f4v|mpe?g|mp[34]|m4[av]|mk[av]|webm|og[gv]|avi|mov|wmv|wma|wav|3gp)$',
 	];
 
 	/**

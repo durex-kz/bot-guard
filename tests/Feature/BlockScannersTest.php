@@ -198,6 +198,10 @@ it('recognizes React2Shell probes sent as multipart/form-data, where PHP gives n
 	expect($multipart('/', $fields))->toBeTrue()
 		->and($multipart('/', ['%24ACTION%5FREF%5F0' => 'x', '%24ACTION%5F0%3A0' => '{"bound":"$@1"}']))->toBeTrue()
 		->and($multipart('/', ['0' => '{"then":"$1:\\u005f\\u005fproto\\u005f\\u005f:then","reason":-1}']))->toBeTrue()
+		// QazPress, 06.11: проверочная проба без нагрузки — корневой чанк 0 = []
+		->and($multipart('/', ['0' => '[]']))->toBeTrue()
+		->and($multipart('/articles', ['0' => '[]']))->toBeFalse()
+		->and($multipart('/', ['0' => '[1]']))->toBeFalse()
 		->and($multipart('/', ['0x' => ['androxgh0st']]))->toBeTrue()
 		->and($multipart('/articles', $fields))->toBeFalse()                    // своя форма — любой текст
 		->and($multipart('/', ['name' => 'Иван', 'text' => 'обычный текст']))->toBeFalse();
